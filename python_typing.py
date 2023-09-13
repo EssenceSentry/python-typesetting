@@ -1,7 +1,5 @@
 # TypeAlias explicitly states that this is a type alias declaration, not a normal variable assignment
-from typing import Any, Literal, TypeAlias
-
-from sympy import Basic
+from typing import Any, TypeAlias, TypeVarTuple
 
 # Type aliases. `Vector` and `list[float]` are synonyms.
 Vector: TypeAlias = list[float]
@@ -70,7 +68,7 @@ ProUserId = NewType("ProUserId", UserId)
 # Annotating callable objects
 
 # Import from `collections.abc`, not from `typing`!
-from collections.abc import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 
 def feeder(get_next_item: Callable[[], str]) -> None:
@@ -314,9 +312,10 @@ def is_class(object: type) -> bool:
 assert type is type[Any]
 
 
-# A user-defined class can be defined as a generic class.
-from typing import TypeVar, Generic
 from logging import Logger
+
+# A user-defined class can be defined as a generic class.
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -349,7 +348,7 @@ def zero_all_vars(vars: Iterable[LoggedVar[int]]) -> None:
 
 
 # A generic type can have any number of type variables.
-from typing import TypeVar, Generic, Sequence
+from typing import Generic, Sequence, TypeVar
 
 T = TypeVar("T", contravariant=True)
 B = TypeVar("B", bound=Sequence[bytes], covariant=True)
@@ -427,6 +426,7 @@ class Z(Generic[T, P]):
 
 Z[int, [dict, float]]
 
+
 class X(Generic[P]):
     ...
 
@@ -446,844 +446,656 @@ s: str = ""
 s = a  # OK
 
 
-def foo(item: Any) -> int:
-    # Passes type checking; 'item' could be any type,
-    # and that type might have a 'bar' method
-    item.bar()
+def legacy_parser1(text):
+    ...
+    return
+
+
+def legacy_parser2(text: Any) -> Any:
+    ...
+    return
+
+
+def hash_a(item: object) -> None:
+    # Fails type checking; an object does not have a 'magic' method.
+    item.magic()
     ...
 
-# # Notice that no type checking is performed when assigning a value of type [Any](#typing.Any) to a more precise type.
-# # For example, the static type checker did not report an error when assigning `a`
-# # to `s` even though `s` was declared to be of type [str] and receives an [int]
-# # value at runtime! Furthermore, all functions without a return type or parameter types
-# # will implicitly default to using [Any]:
 
+def hash_b(item: Any) -> None:
+    # Passes type checking; 'item' could be any type,
+    # and that type might have a 'magic' method
+    item.magic()
+    ...
 
-# def legacy_parser(text):
-#     ...
-#     return
 
+# Passes type checking, since ints and strs are subclasses of object
+hash_a(42)
+hash_a("foo")
 
-# # A static type checker will treat the above
-# # as having the same signature as:
-# def legacy_parser(text: Any) -> Any:
-#     ...
-#     return
+# Passes type checking, since Any is compatible with all types
+hash_b(42)
+hash_b("foo")
 
-# # This behavior allows [Any] to be used as an _escape hatch_ when you need to
-# # mix dynamically and statically typed code. Contrast the behavior of
-# # [Any] with the behavior of [object]. Similar to [Any], every type
-# # is a subtype of [object]. However, unlike [Any], the reverse is not true:
-# # [object] is _not_ a subtype of every other type. That means when the type of a value
-# # is [object], a type checker will reject almost all operations on it,
-# # and assigning it to a variable (or using it as a return value) of a more specialized
-# # type is a type error.
+# Use `object` to indicate that a value could be any type in a typesafe manner.
+# Use `Any` to indicate that a value is dynamically typed.
 
-# def hash_a(item: object) -> int:
-#     # Fails type checking; an object does not have a 'magic' method.
-#     item.magic()
-#     ...
+# Nominal vs structural subtyping
 
+from collections.abc import Iterable, Iterator, Sized
 
-# def hash_b(item: Any) -> int:
-#     # Passes type checking
-#     item.magic()
-#     ...
 
+class Bucket1(Sized, Iterable[int]):
+    ...
 
-# # Passes type checking, since ints and strs are subclasses of object
-# hash_a(42)
-# hash_a("foo")
+    def __len__(self) -> int:
+        ...
 
-# # Passes type checking, since Any is compatible with all types
-# hash_b(42)
-# hash_b("foo")
+    def __iter__(self) -> Iterator[int]:
+        ...
 
-# # Use [object](functions.html#object) to indicate that a value could be any type in a typesafe manner. Use [Any](#typing.Any) to indicate that a value is dynamically typed.
 
-# # Nominal vs structural subtyping[¶](#nominal-vs-structural-subtyping)
-# #
-# # Initially [PEP 484](https://peps.python.org/pep-0484/) defined the Python static type system as using _nominal subtyping_. This means that a class `A` is allowed where a class `B` is expected if and only if `A` is a subclass of `B`. This requirement previously also applied to abstract base classes, such as [Iterable](collections.abc.html#collections.abc.Iterable). The problem with this approach is that a class had to be explicitly marked to support them, which is unpythonic and unlike what one would normally do in idiomatic dynamically typed Python code. For example, this conforms to [PEP 484](https://peps.python.org/pep-0484/):
-# #
+class Bucket2:  # Note: no base classes
+    ...
 
-# # %%
-# from collections.abc import Sized, Iterable, Iterator
+    def __len__(self) -> int:
+        ...
 
+    def __iter__(self) -> Iterator[int]:
+        ...
 
-# class Bucket(Sized, Iterable[int]):
-#     ...
 
-#     def __len__(self) -> int:
-#         ...
+def collect(items: Iterable[int]) -> int:
+    ...
 
-#     def __iter__(self) -> Iterator[int]:
-#         ...
 
-# # %% [markdown]
-# # [PEP 544](https://peps.python.org/pep-0544/) allows to solve this problem by allowing users to write the above code without explicit base classes in the class definition, allowing `Bucket` to be implicitly considered a subtype of both `Sized` and `Iterable[int]` by static type checkers. This is known as _structural subtyping_ (or static duck-typing):
-# #
+result1 = collect(Bucket1())  # Passes type check
+result2 = collect(Bucket2())  # Passes type check
 
-# # %%
-# from collections.abc import Iterator, Iterable
+# Moreover, by subclassing a special class [Protocol](#typing.Protocol), a user can define new custom protocols to fully enjoy structural subtyping (see examples below).
 
+# The `typing` module defines the following classes, functions and decorators.
 
-# class Bucket:  # Note: no base classes
-#     ...
 
-#     def __len__(self) -> int:
-#         ...
+# These can be used as types in annotations. They do not support subscription using `[]`.
 
-#     def __iter__(self) -> Iterator[int]:
-#         ...
+# typing.Any  Special type indicating an unconstrained type.
+# typing.AnyStr
 
+AnyStr = TypeVar("AnyStr", str, bytes)
 
-# def collect(items: Iterable[int]) -> int:
-#     ...
+# `AnyStr` is meant to be used for functions that may accept `str` or `bytes` arguments but cannot allow the two to mix.
 
 
-# result = collect(Bucket())  # Passes type check
+def concat(a: AnyStr, b: AnyStr) -> AnyStr:
+    return a + b
 
-# # %% [markdown]
-# # Moreover, by subclassing a special class [Protocol](#typing.Protocol), a user can define new custom protocols to fully enjoy structural subtyping (see examples below).
-# #
-# # # Module contents[¶](#module-contents)
-# #
-# # The `typing` module defines the following classes, functions and decorators.
-# #
-# # ## Special typing primitives[¶](#special-typing-primitives)
-# #
-# # ### Special types[¶](#special-types)
-# #
-# # These can be used as types in annotations. They do not support subscription using `[]`.
-# #
-# # typing.Any[¶](#typing.Any) Special type indicating an unconstrained type.
-# #
-# # - Every type is compatible with [Any](#typing.Any).
-# #
-# # - [Any](#typing.Any) is compatible with every type.
-# #
-# # Changed in version 3.11: [Any](#typing.Any) can now be used as a base class. This can be useful for avoiding type checker errors with classes that can duck type anywhere or are highly dynamic.
-# #
-# # typing.AnyStr[¶](#typing.AnyStr) A [constrained type variable](#typing-constrained-typevar). Definition:
-# #
-
-# # %%
-# AnyStr = TypeVar("AnyStr", str, bytes)
-
-# # %% [markdown]
-# # `AnyStr` is meant to be used for functions that may accept [str](stdtypes.html#str) or [bytes](stdtypes.html#bytes) arguments but cannot allow the two to mix. For example:
-# #
-
-# # %%
-# def concat(a: AnyStr, b: AnyStr) -> AnyStr:
-#     return a + b
-
-
-# concat("foo", "bar")  # OK, output has type 'str'
-# concat(b"foo", b"bar")  # OK, output has type 'bytes'
-# concat("foo", b"bar")  # Error, cannot mix str and bytes
-
-# # %% [markdown]
-# # Note that, despite its name, `AnyStr` has nothing to do with the [Any](#typing.Any) type, nor does it mean "any string". In particular, `AnyStr` and `str | bytes` are different from each other and have different use cases:
-# #
 
-# # %%
-# # Invalid use of AnyStr:
-# # The type variable is used only once in the function signature,
-# # so cannot be "solved" by the type checker
-# def greet_bad(cond: bool) -> AnyStr:
-#     return "hi there!" if cond else b"greetings!"
+def concat2(a: str | bytes, b: str | bytes) -> str | bytes:
+    return (
+        a + b
+    )  # Fails type checking because `a` might be `str` and `b` might be `bytes`
 
 
-# # The better way of annotating this function:
-# def greet_proper(cond: bool) -> str | bytes:
-#     return "hi there!" if cond else b"greetings!"
+concat("foo", "bar")  # OK, output has type `str`
+concat(b"foo", b"bar")  # OK, output has type `bytes`
+concat("foo", b"bar")  # Error, cannot mix `str` and `bytes`
 
-# # %% [markdown]
-# # typing.LiteralString[¶](#typing.LiteralString) Special type that includes only literal strings. Any string literal is compatible with `LiteralString`, as is another `LiteralString`. However, an object typed as just `str` is not. A string created by composing `LiteralString`-typed objects is also acceptable as a `LiteralString`. Example:
-# #
 
-# # %%
-# from typing import LiteralString
+# `AnyStr` is not the same as `str | bytes`.
+def greet_bad(cond: bool) -> AnyStr:
+    return "hi there!" if cond else b"greetings!"  # FAILS
 
 
-# def run_query(sql: LiteralString) -> None:
-#     ...
-
-
-# def caller(arbitrary_string: str, literal_string: LiteralString) -> None:
-#     run_query("SELECT * FROM students")  # OK
-#     run_query(literal_string)  # OK
-#     run_query(f"SELECT * FROM {literal_string}")
-#     run_query(arbitrary_string)  # type checker error
-#     run_query(  # type checker error
-#         f"SELECT * FROM students WHERE name = {arbitrary_string}"
-#     )
-
-# # %% [markdown]
-# # `LiteralString` is useful for sensitive APIs where arbitrary user-generated strings could generate problems. For example, the two cases above that generate type checker errors could be vulnerable to an SQL injection attack. See [PEP 675](https://peps.python.org/pep-0675/) for more details.
-# #
-# # New in version 3.11.
-# #
-# # typing.Never[¶](#typing.Never) The [bottom type](https://en.wikipedia.org/wiki/Bottom_type), a type that has no members. This can be used to define a function that should never be called, or a function that never returns:
-# #
-
-# # %%
-# from typing import Never
-
-
-# def never_call_me(arg: Never) -> None:
-#     pass
-
-
-# def int_or_str(arg: int | str) -> None:
-#     never_call_me(arg)  # type checker error
-#     match arg:
-#         case int():
-#             print("It's an int")
-#         case str():
-#             print("It's a str")
-#         case _:
-#             never_call_me(arg)  # OK, arg is of type Never
-
-# # %% [markdown]
-# # New in version 3.11: On older Python versions, [NoReturn](#typing.NoReturn) may be used to express the same concept. `Never` was added to make the intended meaning more explicit.
-# #
-# # typing.NoReturn[¶](#typing.NoReturn) Special type indicating that a function never returns. For example:
-# #
-
-# # %%
-# from typing import NoReturn
-
-
-# def stop() -> NoReturn:
-#     raise RuntimeError("no way")
-
-# # %% [markdown]
-# # `NoReturn` can also be used as a [bottom type](https://en.wikipedia.org/wiki/Bottom_type), a type that has no values. Starting in Python 3.11, the [Never](#typing.Never) type should be used for this concept instead. Type checkers should treat the two equivalently.
-# #
-# # New in version 3.5.4.
-# #
-# # New in version 3.6.2.
-# #
-# # typing.Self[¶](#typing.Self) Special type to represent the current enclosed class. For example:
-# #
-
-# # %%
-# from typing import Self, reveal_type
-
-
-# class Foo:
-#     def return_self(self) -> Self:
-#         ...
-#         return self
-
-
-# class SubclassOfFoo(Foo):
-#     pass
-
-
-# reveal_type(Foo().return_self())  # Revealed type is "Foo"
-# reveal_type(SubclassOfFoo().return_self())  # Revealed type is "SubclassOfFoo"
-
-# # %% [markdown]
-# # This annotation is semantically equivalent to the following, albeit in a more succinct fashion:
-# #
-
-# # %%
-# from typing import TypeVar
-
-# Self = TypeVar("Self", bound="Foo")
-
-
-# class Foo:
-#     def return_self(self: Self) -> Self:
-#         ...
-#         return self
-
-# # %% [markdown]
-# # In general, if something returns `self`, as in the above examples, you should use `Self` as the return annotation. If `Foo.return_self` was annotated as returning `"Foo"`, then the type checker would infer the object returned from `SubclassOfFoo.return_self` as being of type `Foo` rather than `SubclassOfFoo`. Other common use cases include:
-# #
-# # - [classmethod](functions.html#classmethod)s that are used as alternative constructors and return instances of the `cls` parameter.
-# #
-# # - Annotating an [**enter**()](../reference/datamodel.html#object.__enter__) method which returns self.
-# #
-# # You should not use `Self` as the return annotation if the method is not guaranteed to return an instance of a subclass when the class is subclassed:
-# #
-
-# # %%
-# class Eggs:
-#     # Self would be an incorrect return annotation here,
-#     # as the object returned is always an instance of Eggs,
-#     # even in subclasses
-#     def returns_eggs(self) -> "Eggs":
-#         return Eggs()
-
-# # %% [markdown]
-# # See [PEP 673](https://peps.python.org/pep-0673/) for more details.
-# #
-# # New in version 3.11.
-# #
-# # typing.TypeAlias[¶](#typing.TypeAlias) Special annotation for explicitly declaring a [type alias](#type-aliases). For example:
-# #
-
-# # %%
-# from typing import TypeAlias
-
-# Factors: TypeAlias = list[int]
-
-# # %% [markdown]
-# # `TypeAlias` is particularly useful for annotating aliases that make use of forward references, as it can be hard for type checkers to distinguish these from normal variable assignments:
-# #
-
-# # %%
-# from typing import Generic, TypeAlias, TypeVar
-
-# T = TypeVar("T")
-
-# # "Box" does not exist yet,
-# # so we have to use quotes for the forward reference.
-# # Using ``TypeAlias`` tells the type checker that this is a type alias declaration,
-# # not a variable assignment to a string.
-# BoxOfStrings: TypeAlias = "Box[str]"
+def greet_proper(cond: bool) -> str | bytes:
+    return "hi there!" if cond else b"greetings!"  # OK
 
 
-# class Box(Generic[T]):
-#     @classmethod
-#     def make_box_of_strings(cls) -> BoxOfStrings:
-#         ...
+from typing import LiteralString
 
-# # %% [markdown]
-# # See [PEP 613](https://peps.python.org/pep-0613/) for more details.
-# #
-# # New in version 3.10.
-# #
-# # # Special forms[¶](#special-forms)
-# #
-# # These can be used as types in annotations. They all support subscription using `[]`, but each has a unique syntax.
-# #
-# # typing.Union[¶](#typing.Union) Union type; `Union[X, Y]` is equivalent to `X | Y` and means either X or Y. To define a union, use e.g. `Union[int, str]` or the shorthand `int | str`. Using that shorthand is recommended. Details:
-# #
-# # - The arguments must be types and there must be at least one.
-# #
-# # - Unions of unions are flattened, e.g.:
-# #
+# `LiteralString` is useful for sensitive APIs where arbitrary user-generated strings could generate problems.
+# For example, the two cases above that generate type checker errors could be vulnerable to an SQL injection attack.
 
-# # %%
-# from typing import Union
 
+def run_query(sql: LiteralString) -> None:
+    ...
 
-# Union[Union[int, str], float] == Union[int, str, float]
 
-# # %% [markdown]
-# # - Unions of a single argument vanish, e.g.:
-# #
+def caller(arbitrary_string: str, literal_string: LiteralString) -> None:
+    # sourcery skip: extract-duplicate-method
+    run_query("SELECT * FROM students")  # OK
+    run_query(literal_string)  # OK
+    query = f"SELECT * FROM {literal_string}"
+    run_query(query)  # OK: `query` is of type `LiteralString`
+    # FAILS: an object typed as just `str` is not `LiteralString`
+    run_query(arbitrary_string)
+    query = f"SELECT * FROM students WHERE name = {arbitrary_string}"
+    run_query(query)  # FAILS: `query` is of type `str`
 
-# # %%
-# Union[int] == int  # The constructor actually returns int
 
-# # %% [markdown]
-# # - Redundant arguments are skipped, e.g.:
-# #
+from typing import Never
 
-# # %%
-# Union[int, str, int] == Union[int, str] == int | str
 
-# # %% [markdown]
-# # - When comparing unions, the argument order is ignored, e.g.:
-# #
+def never_call_me(arg: Never) -> None:
+    pass
 
-# # %%
-# Union[int, str] == Union[str, int]
 
-# # %% [markdown]
-# # - You cannot subclass or instantiate a `Union`.
-# #
-# # - You cannot write `Union[X][Y]`.
-# #
-# # Changed in version 3.7: Don't remove explicit subclasses from unions at runtime.
-# #
-# # Changed in version 3.10: Unions can now be written as `X | Y`. See [union type expressions](stdtypes.html#types-union).
-# #
-# # typing.Optional[¶](#typing.Optional) `Optional[X]` is equivalent to `X | None` (or `Union[X, None]`). Note that this is not the same concept as an optional argument, which is one that has a default. An optional argument with a default does not require the `Optional` qualifier on its type annotation just because it is optional. For example:
-# #
+def int_or_str(arg: int | str) -> None:
+    never_call_me(arg)  # FAILS: `arg` is of type `int | str`
+    match arg:
+        case int():
+            print("It's an int")
+        case str():
+            print("It's a str")
+        case _:
+            never_call_me(arg)  # OK: `arg` is of type `Never`
 
-# # %%
-# def foo(arg: int = 0) -> None:
-#     ...
 
-# # %% [markdown]
-# # On the other hand, if an explicit value of `None` is allowed, the use of `Optional` is appropriate, whether the argument is optional or not. For example:
-# #
+from typing import NoReturn
 
-# # %%
-# from typing import Optional
 
+def stop() -> NoReturn:
+    raise RuntimeError("no way")
 
-# def foo(arg: Optional[int] = None) -> None:
-#     ...
 
-# # %%
-# from collections.abc import Callable
-# from threading import Lock
-# from typing import Concatenate, ParamSpec, TypeVar
+def returns_none() -> NoReturn:
+    return  # FAILS: it returns `None`
 
-# P = ParamSpec("P")
-# R = TypeVar("R")
 
-# # Use this lock to ensure that only one thread is executing a function
-# # at any time.
-# my_lock = Lock()
+from typing import Self, reveal_type
 
 
-# def with_lock(f: Callable[Concatenate[Lock, P], R]) -> Callable[P, R]:
-#     """A type-safe decorator which provides a lock."""
+class Foo1:
+    def return_self(self) -> Self:
+        ...
+        return self
 
-#     def inner(*args: P.args, **kwargs: P.kwargs) -> R:
-#         # Provide the lock as the first argument.
-#         return f(my_lock, *args, **kwargs)
 
-#     return inner
+class SubclassOfFoo1(Foo1):
+    pass
 
 
-# @with_lock
-# def sum_threadsafe(lock: Lock, numbers: list[float]) -> float:
-#     """Add a list of numbers together in a thread-safe manner."""
-#     with lock:
-#         return sum(numbers)
+reveal_type(Foo1().return_self())  # Revealed type is "Foo1"
+reveal_type(SubclassOfFoo1().return_self())  # Revealed type is "SubclassOfFoo1"
 
 
-# # We don't need to pass in the lock ourselves thanks to the decorator.
-# sum_threadsafe([1.1, 2.2, 3.3])
+# This annotation is semantically equivalent to the following:
 
-# # %%
-# from typing import Literal
+from typing import TypeVar
 
+Self = TypeVar("Self", bound="Foo2")
 
-# def validate_simple(data: Any) -> Literal[True]:  # always returns True
-#     ...
 
+class Foo2:
+    def return_self(self: Self) -> Self:
+        ...
+        return self
 
-# Mode: TypeAlias = Literal["r", "rb", "w", "wb"]
 
+class SubclassOfFoo2(Foo2):
+    pass
 
-# def open_helper(file: str, mode: Mode) -> str:
-#     ...
 
+reveal_type(Foo2().return_self())  # Revealed type is "Foo2"
+reveal_type(SubclassOfFoo2().return_self())  # Revealed type is "SubclassOfFoo2"
 
-# open_helper("/some/path", "r")  # Passes type check
-# open_helper("/other/path", "typo")  # Error in type checker
 
-# # %% [markdown]
-# # `Literal[...]` cannot be subclassed. At runtime, an arbitrary value is allowed as type argument to `Literal[...]`, but type checkers may impose restrictions. See [PEP 586](https://peps.python.org/pep-0586/) for more details about literal types.
-# #
-# # New in version 3.8.
-# #
-# # Changed in version 3.9.1: `Literal` now de-duplicates parameters. Equality comparisons of `Literal` objects are no longer order dependent. `Literal` objects will now raise a [TypeError](exceptions.html#TypeError) exception during equality comparisons if one of their parameters are not [hashable](../glossary.html#term-hashable).
-# #
+# In general, if something returns `self`, as in the above examples, you should use `Self` as the return annotation.
+# If `Foo.return_self` was annotated as returning `"Foo"`, then the type checker would infer the object returned from
+# `SubclassOfFoo.return_self` as being of type `Foo` rather than `SubclassOfFoo`.
 
-# # %% [markdown]
-# # typing.ClassVar[¶](#typing.ClassVar) Special type construct to mark class variables. As introduced in [PEP 526](https://peps.python.org/pep-0526/), a variable annotation wrapped in ClassVar indicates that a given attribute is intended to be used as a class variable and should not be set on instances of that class. Usage:
-# #
 
-# # %%
-# from typing import ClassVar
+class Foo3:
+    def return_self(self: "Foo3") -> "Foo3":
+        ...
+        return self
 
 
-# class Starship:
-#     stats: ClassVar[dict[str, int]] = {}  # class variable
-#     damage: int = 10  # instance variable
+class SubclassOfFoo3(Foo3):
+    pass
 
-# # %% [markdown]
-# # [ClassVar](#typing.ClassVar) accepts only types and cannot be further subscribed. [ClassVar](#typing.ClassVar) is not a class itself, and should not be used with [isinstance()](functions.html#isinstance) or [issubclass()](functions.html#issubclass). [ClassVar](#typing.ClassVar) does not change Python runtime behavior, but it can be used by third-party type checkers. For example, a type checker might flag the following code as an error:
-# #
 
-# # %%
-# enterprise_d = Starship(3000)
-# enterprise_d.stats = {}  # Error, setting class variable on instance
-# Starship.stats = {}  # This is OK
+reveal_type(Foo3().return_self())  # Revealed type is "Foo3"
+reveal_type(SubclassOfFoo3().return_self())  # Revealed type is "Foo3"
 
-# # %% [markdown]
-# # New in version 3.5.3.
-# #
-# # typing.Final[¶](#typing.Final) Special typing construct to indicate final names to type checkers. Final names cannot be reassigned in any scope. Final names declared in class scopes cannot be overridden in subclasses. For example:
-# #
 
-# # %%
-# from typing import Final
+class Eggs:
+    # Self would be an incorrect return annotation here,
+    # as the object returned is always an instance of Eggs,
+    # even in subclasses
+    def returns_eggs(self) -> "Eggs":
+        return Eggs()
 
 
-# MAX_SIZE: Final = 9000
-# MAX_SIZE += 1  # Error reported by type checker
+from typing import Generic, TypeAlias, TypeVar
 
+T = TypeVar("T")
 
-# class Connection:
-#     TIMEOUT: Final[int] = 10
+# "Box" does not exist yet, so we have to use quotes for the forward reference.
+BoxOfStrings: TypeAlias = "Box[str]"
 
 
-# class FastConnector(Connection):
-#     TIMEOUT = 1  # Error reported by type checker
+class Box(Generic[T]):
+    @classmethod
+    def make_box_of_strings(cls) -> BoxOfStrings:
+        ...
 
-# # %%
-# from dataclasses import dataclass
-# from typing import Annotated
 
+from typing import Union
 
-# @dataclass
-# class ValueRange:
-#     lo: int
-#     hi: int
+Union[Union[int, str], float] == Union[int, str, float] == int | str | float
 
+Union[int]  # FAILS: requires two arguments or more
 
-# T1 = Annotated[int, ValueRange(-10, 5)]
-# T2 = Annotated[T1, ValueRange(-20, 3)]
+# Redudant parameters are ommited
+Union[int, str, int] == Union[int, str] == int | str | int == int | str
 
-# # %% [markdown]
-# # Details of the syntax:
-# #
-# # - The first argument to `Annotated` must be a valid type
-# #
-# # - Multiple metadata elements can be supplied (`Annotated` supports variadic arguments):
-# #
+# When comparing unions, the argument order is ignored
+Union[int, str] == Union[str, int]
 
-# # %%
-# @dataclass
-# class ctype:
-#     kind: str
 
+# `Optional[X]` is equivalent to `X | None`
+from typing import Optional
 
-# Annotated[int, ValueRange(3, 10), ctype("char")]
 
-# # %% [markdown]
-# # It is up to the tool consuming the annotations to decide whether the client is allowed to add multiple metadata elements to one annotation and how to merge those annotations.
-# #
-# # - `Annotated` must be subscripted with at least two arguments ( `Annotated[int]` is not valid)
-# #
-# # - The order of the metadata elements is preserved and matters for equality checks:
-# #
+def foo2(arg: Optional[int] = None) -> None:
+    ...
 
-# # %%
-# assert (
-#     Annotated[int, ValueRange(3, 10), ctype("char")]
-#     != Annotated[int, ctype("char"), ValueRange(3, 10)]
-# )
 
-# # %% [markdown]
-# # - Nested `Annotated` types are flattened. The order of the metadata elements starts with the innermost annotation:
-# #
+from collections.abc import Callable
+from threading import Lock
+from typing import Concatenate, ParamSpec, TypeVar
 
-# # %%
-# assert (
-#     Annotated[Annotated[int, ValueRange(3, 10)], ctype("char")]
-#     == Annotated[int, ValueRange(3, 10), ctype("char")]
-# )
+P = ParamSpec("P")
+R = TypeVar("R")
 
-# # %% [markdown]
-# # - Duplicated metadata elements are not removed:
-# #
 
-# # %%
-# assert (
-#     Annotated[int, ValueRange(3, 10)]
-#     != Annotated[int, ValueRange(3, 10), ValueRange(3, 10)]
-# )
+def with_lock(f: Callable[Concatenate[Lock, P], R]) -> Callable[P, R]:
+    """A type-safe decorator which provides a lock."""
+    # Use this lock to ensure that only one thread is executing a function at any time.
+    lock = Lock()
 
-# # %% [markdown]
-# # - `Annotated` can be used with nested and generic aliases:
-# #
+    def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+        # Provide the lock as the first argument.
+        return f(lock, *args, **kwargs)
 
-# # %%
-# @dataclass
-# class MaxLen:
-#     value: int
+    return inner
 
 
-# T = TypeVar("T")
-# Vec: TypeAlias = Annotated[list[tuple[T, T]], MaxLen(10)]
+def with_lock_bad(f: Callable[P, R]) -> Callable[P, R]:
+    """A type-safe decorator which provides a lock."""
+    # Use this lock to ensure that only one thread is executing a function at any time.
+    lock = Lock()
 
-# assert Vec[int] == Annotated[list[tuple[int, int]], MaxLen(10)]
+    def inner(*args: P.args, **kwargs: P.kwargs) -> R:
+        # Provide the lock as the first argument.
+        return f(lock, *args, **kwargs)  # FAILS: Expected 0 positional arguments
 
-# # %% [markdown]
-# # - `Annotated` cannot be used with an unpacked [TypeVarTuple](#typing.TypeVarTuple):
-# #
+    return inner
 
-# # %%
-# Variadic: TypeAlias = Annotated[*Ts, Ann1]  # NOT valid
 
-# # %% [markdown]
-# # This would be equivalent to:
-# #
+@with_lock
+def sum_threadsafe(lock: Lock, numbers: list[float]) -> float:
+    """Add a list of numbers together in a thread-safe manner."""
+    with lock:
+        return sum(numbers)
 
-# # %%
-# Annotated[T1, T2, T3, ..., Ann1]
 
-# # %% [markdown]
-# # where `T1`, `T2`, etc. are [TypeVars](#typing.TypeVar). This would be invalid: only one type should be passed to Annotated.
-# #
-# # - By default, [get_type_hints()](#typing.get_type_hints) strips the metadata from annotations. Pass `include_extras=True` to have the metadata preserved:
-# #
+# We don't need to pass in the lock ourselves thanks to the decorator.
+sum_threadsafe([1.1, 2.2, 3.3])
 
-# # %%
-# from typing import Annotated, get_type_hints
 
+from typing import Literal
 
-# def func(x: Annotated[int, "metadata"]) -> None:
-#     pass
 
+def validate_simple(data: Any) -> Literal[True]:  # always returns True
+    ...
 
-# get_type_hints(func)
 
-# # %%
-# get_type_hints(func, include_extras=True)
+Mode: TypeAlias = Literal["r", "rb", "w", "wb"]
 
-# # %% [markdown]
-# # At runtime, the metadata associated with an `Annotated` type can be retrieved via the `__metadata__` attribute:
-# #
 
-# # %%
-# from typing import Annotated
+def open_helper(file: str, mode: Mode) -> str:
+    ...
 
-# X = Annotated[int, "very", "important", "metadata"]
 
-# # %% [markdown]
-# # typing.TypeGuard[¶](#typing.TypeGuard) Special typing construct for marking user-defined type guard functions. `TypeGuard` can be used to annotate the return type of a user-defined type guard function. `TypeGuard` only accepts a single type argument. At runtime, functions marked this way should return a boolean. `TypeGuard` aims to benefit _type narrowing_ – a technique used by static type checkers to determine a more precise type of an expression within a program's code flow. Usually type narrowing is done by analyzing conditional code flow and applying the narrowing to a block of code. The conditional expression here is sometimes referred to as a "type guard":
-# #
+open_helper("/some/path", "r")  # OK
+open_helper("/other/path", "read")  # FAILS
 
-# # %%
-# def is_str(val: str | float):
-#     # "isinstance" type guard
-#     if isinstance(val, str):
-#         # Type of ``val`` is narrowed to ``str``
-#         ...
-#     else:
-#         # Else, type of ``val`` is narrowed to ``float``.
-#         ...
 
-# # %% [markdown]
-# # Sometimes it would be convenient to use a user-defined boolean function as a type guard. Such a function should use `TypeGuard[...]` as its return type to alert static type checkers to this intention. Using `-> TypeGuard` tells the static type checker that for a given function:
-# #
-# # The return value is a boolean. If the return value is `True`, the type of its argument is the type inside `TypeGuard`.
-# #
-# # For example:
-# #
+from typing import ClassVar
 
-# # %%
-# from typing import TypeGuard
 
+class Starship:
+    stats: ClassVar[dict[str, int]] = {}  # class variable
+    damage: int = 10  # instance variable
 
-# def is_str_list(val: list[object]) -> TypeGuard[list[str]]:
-#     """Determines whether all objects in the list are strings"""
-#     return all(isinstance(x, str) for x in val)
 
+# %% [markdown]
+# [ClassVar](#typing.ClassVar) accepts only types and cannot be further subscribed. [ClassVar](#typing.ClassVar) is not a class itself, and should not be used with [isinstance()](functions.html#isinstance) or [issubclass()](functions.html#issubclass). [ClassVar](#typing.ClassVar) does not change Python runtime behavior, but it can be used by third-party type checkers. For example, a type checker might flag the following code as an error:
+#
 
-# def func1(val: list[object]):
-#     if is_str_list(val):
-#         # Type of ``val`` is narrowed to ``list[str]``.
-#         print(" ".join(val))
-#     else:
-#         # Type of ``val`` remains as ``list[object]``.
-#         print("Not a list of strings!")
+enterprise_d = Starship()
+enterprise_d.stats = {}  # Error, setting class variable on instance
+Starship.stats = {}  # OK
 
-# # %% [markdown]
-# # If `is_str_list` is a class or instance method, then the type in `TypeGuard` maps to the type of the second parameter after `cls` or `self`. In short, the form `def foo(arg: TypeA) -> TypeGuard[TypeB]: ...`, means that if `foo(arg)` returns `True`, then `arg` narrows from `TypeA` to `TypeB`.
-# #
-# # <div style="background-color: #e6d3a3; border-radius: 10px; padding: 20px; margin-top: 10px; margin-bottom: 10px"><strong>Note</strong>
-# #
-# # <code>TypeB</code> need not be a narrower form of <code>TypeA</code> – it can even be a
-# # wider form. The main reason is to allow for things like
-# # narrowing <code>list[object]</code> to <code>list[str]</code> even though the latter
-# # is not a subtype of the former, since <code>list</code> is invariant.
-# # The responsibility of writing type-safe type guards is left to the user.</div>
-# #
-# # `TypeGuard` also works with type variables. See [PEP 647](https://peps.python.org/pep-0647/) for more details.
-# #
-# # New in version 3.10.
-# #
-# # typing.Unpack[¶](#typing.Unpack) Typing operator to conceptually mark an object as having been unpacked. For example, using the unpack operator `*` on a [type variable tuple](#typing.TypeVarTuple) is equivalent to using `Unpack` to mark the type variable tuple as having been unpacked:
-# #
 
-# # %%
-# from typing import TypeVarTuple, Unpack
+from typing import Final
 
+MAX_SIZE: Final = 9000
+MAX_SIZE = 1  # FAILS
 
-# Ts = TypeVarTuple("Ts")
-# tup: tuple[*Ts]
-# # Effectively does:
-# tup: tuple[Unpack[Ts]]
 
-# # %% [markdown]
-# # In fact, `Unpack` can be used interchangeably with `*` in the context of [typing.TypeVarTuple](#typing.TypeVarTuple) and [builtins.tuple](stdtypes.html#tuple) types. You might see `Unpack` being used explicitly in older versions of Python, where `*` couldn't be used in certain places:
-# #
+from dataclasses import dataclass
+from typing import Annotated
 
-# # %%
-# # In older versions of Python, TypeVarTuple and Unpack
-# # are located in the `typing_extensions` backports package.
-# from typing_extensions import TypeVarTuple, Unpack
 
-# Ts = TypeVarTuple("Ts")
-# tup: tuple[*Ts]  # Syntax error on Python <= 3.10!
-# tup: tuple[Unpack[Ts]]  # Semantically equivalent, and backwards-compatible
+@dataclass
+class ValueRange:
+    lo: int
+    hi: int
 
-# # %% [markdown]
-# # # Building generic types[¶](#building-generic-types)
-# #
-# # The following classes should not be used directly as annotations. Their intended purpose is to be building blocks for creating generic types.
-# #
-# # _class_ typing.Generic[¶](#typing.Generic) Abstract base class for generic types. A generic type is typically declared by inheriting from an instantiation of this class with one or more type variables. For example, a generic mapping type might be defined as:
-# #
 
-# # %%
-# class Mapping(Generic[KT, VT]):
-#     def __getitem__(self, key: KT) -> VT:
-#         ...
-#         # Etc.
+@dataclass
+class ctype:
+    kind: str
 
-# # %% [markdown]
-# # This class can then be used as follows:
-# #
 
-# # %%
-# X = TypeVar("X")
-# Y = TypeVar("Y")
+# The first argument to `Annotated` must be a valid type
+# Multiple metadata elements can be supplied (`Annotated` supports variadic arguments)
 
+T1 = Annotated[int, ValueRange(-10, 5)]
+T2 = Annotated[T1, ValueRange(-20, 3)]
+T3 = Annotated[int, ValueRange(3, 10), ctype("char")]
 
-# def lookup_name(mapping: Mapping[X, Y], key: X, default: Y) -> Y:
-#     try:
-#         return mapping[key]
-#     except KeyError:
-#         return default
+# The order of the metadata elements is preserved and matters for equality checks
 
-# # %% [markdown]
-# # _class_ typing.TypeVar(_name_, _*constraints_, _bound=None_, _covariant=False_, _contravariant=False_)[¶](#typing.TypeVar) Type variable. Usage:
-# #
+assert (
+    Annotated[int, ValueRange(3, 10), ctype("char")]
+    != Annotated[int, ctype("char"), ValueRange(3, 10)]
+)
 
-# # %%
-# T = TypeVar("T")  # Can be anything
-# S = TypeVar("S", bound=str)  # Can be any subtype of str
-# A = TypeVar("A", str, bytes)  # Must be exactly str or bytes
+# Nested `Annotated` types are flattened.
+assert (
+    Annotated[Annotated[int, ValueRange(3, 10)], ctype("char")]
+    == Annotated[int, ValueRange(3, 10), ctype("char")]
+)
 
-# # %% [markdown]
-# # Type variables exist primarily for the benefit of static type checkers. They serve as the parameters for generic types as well as for generic function and type alias definitions. See [Generic](#typing.Generic) for more information on generic types. Generic functions work as follows:
-# #
+# Duplicated metadata elements are not removed:
+assert (
+    Annotated[int, ValueRange(3, 10)]
+    != Annotated[int, ValueRange(3, 10), ValueRange(3, 10)]
+)
 
-# # %%
-# def repeat(x: T, n: int) -> Sequence[T]:
-#     """Return a list containing n references to x."""
-#     return [x] * n
 
+@dataclass
+class MaxLen:
+    value: int
 
-# def print_capitalized(x: S) -> S:
-#     """Print x capitalized, and return x."""
-#     print(x.capitalize())
-#     return x
 
+# `Annotated` can be used with nested and generic aliases
+T = TypeVar("T")
+Vec: TypeAlias = Annotated[list[tuple[T, T]], MaxLen(10)]
 
-# def concatenate(x: A, y: A) -> A:
-#     """Add two strings or bytes objects together."""
-#     return x + y
+assert Vec[int] == Annotated[list[tuple[int, int]], MaxLen(10)]
 
-# # %% [markdown]
-# # Note that type variables can be _bound_, _constrained_, or neither, but cannot be both bound _and_ constrained. Type variables may be marked covariant or contravariant by passing `covariant=True` or `contravariant=True`. See [PEP 484](https://peps.python.org/pep-0484/) for more details. By default, type variables are invariant. Bound type variables and constrained type variables have different semantics in several important ways. Using a _bound_ type variable means that the `TypeVar` will be solved using the most specific type possible:
-# #
+# `Annotated` cannot be used with an unpacked `TypeVarTuple`
+Ts = TypeVarTuple("Ts")
+Variadic: TypeAlias = Annotated[*Ts, MaxLen(10)]  # FAILS
 
-# # %%
-# x = print_capitalized("a string")
-# reveal_type(x)  # revealed type is str
 
+# `get_type_hints()` strips the metadata from annotations. Pass `include_extras=True` to have the metadata preserved.
 
-# class StringSubclass(str):
-#     pass
+from typing import Annotated, get_type_hints
 
 
-# y = print_capitalized(StringSubclass("another string"))
-# reveal_type(y)  # revealed type is StringSubclass
+def func(x: Annotated[int, "metadata"]) -> None:
+    pass
 
-# z = print_capitalized(45)  # error: int is not a subtype of str
 
-# # %% [markdown]
-# # Type variables can be bound to concrete types, abstract types (ABCs or protocols), and even unions of types:
-# #
+get_type_hints(func)
+get_type_hints(func, include_extras=True)
 
-# # %%
-# from typing import SupportsAbs
+# FAILS type check because `int` has no `__metadata__`
+assert Annotated[int, "$"].__metadata__ == ("$",)
 
 
-# U = TypeVar("U", bound=str | bytes)  # Can be any subtype of the union str|bytes
-# V = TypeVar("V", bound=SupportsAbs)  # Can be anything with an __abs__ method
+def is_str(
+    val: str | float,
+) -> str | float:  # sourcery skip: assign-if-exp, use-fstring-for-concatenation
+    # "isinstance" type guard
+    if isinstance(val, str):
+        # Type of ``val`` is narrowed to ``str``
+        return val + ""
+    else:
+        return val + 0
 
-# # %% [markdown]
-# # Using a _constrained_ type variable, however, means that the `TypeVar` can only ever be solved as being exactly one of the constraints given:
-# #
 
-# # %%
-# a = concatenate("one", "two")
-# reveal_type(a)  # revealed type is str
+from typing import TypeGuard
 
-# b = concatenate(StringSubclass("one"), StringSubclass("two"))
-# reveal_type(b)  # revealed type is str, despite StringSubclass being passed in
 
-# c = concatenate(
-#     "one", b"two"
-# )  # error: type variable 'A' can be either str or bytes in a function call, but not both
+def is_str_list(val: list[object]) -> TypeGuard[list[str]]:
+    # Determines whether all objects in the list are strings
+    return all(isinstance(x, str) for x in val)
 
-# # %% [markdown]
-# # At runtime, `isinstance(x, T)` will raise [TypeError](exceptions.html#TypeError).
-# #
-# # **name**[¶](#typing.TypeVar.__name__) The name of the type variable.
-# #
-# # **covariant**[¶](#typing.TypeVar.__covariant__) Whether the type var has been marked as covariant.
-# #
-# # **contravariant**[¶](#typing.TypeVar.__contravariant__) Whether the type var has been marked as contravariant.
-# #
-# # **bound**[¶](#typing.TypeVar.__bound__) The bound of the type variable, if any.
-# #
-# # **constraints**[¶](#typing.TypeVar.__constraints__) A tuple containing the constraints of the type variable, if any.
-# #
-# # _class_ typing.TypeVarTuple(_name_)[¶](#typing.TypeVarTuple) Type variable tuple. A specialized form of [type variable](#typing.TypeVar) that enables _variadic_ generics. Usage:
-# #
 
-# # %%
-# T = TypeVar("T")
-# Ts = TypeVarTuple("Ts")
+def func1(val: list[object]):
+    if is_str_list(val):
+        print(" ".join(val))
+    else:
+        print("Not a list of strings!")
 
 
-# def move_first_element_to_last(tup: tuple[T, *Ts]) -> tuple[*Ts, T]:
-#     return (*tup[1:], tup[0])
+def is_str_list_bool(val: list[object]) -> bool:
+    # Does exactly the same, but returns a `bool`
+    return all(isinstance(x, str) for x in val)
 
-# # %% [markdown]
-# # A normal type variable enables parameterization with a single type. A type variable tuple, in contrast, allows parameterization with an _arbitrary_ number of types by acting like an _arbitrary_ number of type variables wrapped in a tuple. For example:
-# #
 
-# # %%
-# # T is bound to int, Ts is bound to ()
-# # Return value is (1,), which has type tuple[int]
-# move_first_element_to_last(tup=(1,))
+def func2(val: list[object]):
+    if is_str_list_bool(val):
+        print(
+            " ".join(val)
+        )  # FAILS: without the TypeGuard annotation in the function `is_str_list_bool`, `val` is `list[object]`
+    else:
+        print("Not a list of strings!")
 
-# # T is bound to int, Ts is bound to (str,)
-# # Return value is ('spam', 1), which has type tuple[str, int]
-# move_first_element_to_last(tup=(1, "spam"))
 
-# # T is bound to int, Ts is bound to (str, float)
-# # Return value is ('spam', 3.0, 1), which has type tuple[str, float, int]
-# move_first_element_to_last(tup=(1, "spam", 3.0))
+# If `is_str_list` is a class or instance method, then the type in `TypeGuard` maps to the type of the second parameter after `cls` or `self`.
+# In short, the form `def foo(arg: TypeA) -> TypeGuard[TypeB]: ...`,
+# means that if `foo(arg)` returns `True`, then `arg` narrows from `TypeA` to `TypeB`.
 
-# # This fails to type check (and fails at runtime)
-# # because tuple[()] is not compatible with tuple[T, *Ts]
-# # (at least one element is required)
-# move_first_element_to_last(tup=())
 
-# # %% [markdown]
-# # Note the use of the unpacking operator `*` in `tuple[T, *Ts]`. Conceptually, you can think of `Ts` as a tuple of type variables `(T1, T2, ...)`. `tuple[T, *Ts]` would then become `tuple[T, *(T1, T2, ...)]`, which is equivalent to `tuple[T, T1, T2, ...]`. (Note that in older versions of Python, you might see this written using [Unpack](#typing.Unpack) instead, as `Unpack[Ts]`.) Type variable tuples must _always_ be unpacked. This helps distinguish type variable tuples from normal type variables:
-# #
+class A:
+    ...
 
-# # %%
-# x: Ts  # Not valid
-# x: tuple[Ts]  # Not valid
-# x: tuple[*Ts]  # The correct way to do it
+    @classmethod
+    def all_int(cls, arg: list) -> TypeGuard[list[int]]:
+        return all(isinstance(x, int) for x in arg)
 
-# # %% [markdown]
-# # Type variable tuples can be used in the same contexts as normal type variables. For example, in class definitions, arguments, and return types:
-# #
+
+def try_sum(l: list[object]):  # sourcery skip: assign-if-exp
+    if A.all_int(l):
+        return sum(l)
+    else:
+        return sum(l)  # FAILS
+
+
+try_sum([1, 2, 3])
+
+# `TypeB` need not be a narrower form of `TypeA` – it can even be a
+# wider form. The main reason is to allow for things like
+# narrowing `list[object]` to `list[str]` even though the latter
+# is not a subtype of the former, since `list` is invariant.
+# The responsibility of writing type-safe type guards is left to the user.
+
+
+# Typing operator to conceptually mark an object as having been unpacked.
+# For example, using the unpack operator `*` on a `typing.TypeVarTuple` is equivalent
+# to using `Unpack` to mark the type variable tuple as having been unpacked.
+from typing import TypeVarTuple, Unpack
+
+Ts = TypeVarTuple("Ts")
+
+
+def print1(*x: Unpack[Ts]) -> tuple[Union[Unpack[Ts]]]:
+    # sourcery skip: inline-immediately-returned-variable
+    result = tuple(x)
+    return result
+
+
+def print2(*x: *Ts) -> tuple[Union[*Ts]]:
+    return tuple(x)
+
+
+# Building generic types
+
+# The following classes should not be used directly as annotations.
+# Their intended purpose is to be building blocks for creating generic types.
+
+# A generic type is typically declared by inheriting from an instantiation of this class with one
+# or more type variables. For example, a generic mapping type might be defined as:
+
+KT = TypeVar("KT")
+VT = TypeVar("VT")
+
+
+class Mapping(Generic[KT, VT]):
+    def __getitem__(self, key: KT) -> VT:
+        ...
+
+
+# This class can then be used as follows:
+
+X = TypeVar("X")
+Y = TypeVar("Y")
+
+
+def lookup_name(mapping: Mapping[X, Y], key: X, default: Y) -> Y:
+    try:
+        return mapping[key]
+    except KeyError:
+        return default
+
+
+FloatType = TypeVar(
+    "FloatType",
+    int,
+    float,
+    covariant=False,
+    contravariant=False,
+)
+ComplexType = TypeVar(
+    "ComplexType",
+    bound=complex,
+    covariant=False,
+    contravariant=False,
+)
+
+
+T = TypeVar("T")  # Can be anything
+S = TypeVar("S", bound=str)  # Can be any subtype of str
+U = TypeVar("U", str, bytes)  # Must be exactly str or bytes
+
+# Type variables exist primarily for the benefit of static type checkers.
+# They serve as the parameters for generic types as well as for generic
+# function and type alias definitions.
+
+
+def repeat(x: T, n: int) -> Sequence[T]:
+    """Return a list containing n references to x."""
+    return [x] * n
+
+
+def print_capitalized(x: S) -> S:
+    """Print x capitalized, and return x."""
+    print(x.capitalize())
+    return x
+
+
+def concatenate(x: U, y: U) -> U:
+    """Add two strings or bytes objects together."""
+    return x + y
+
+
+x__ = print_capitalized("a string")
+reveal_type(x__)  # revealed type is `str`
+
+
+class StringSubclass(str):
+    pass
+
+
+y__ = print_capitalized(StringSubclass("another string"))
+reveal_type(y__)  # revealed type is `StringSubclass`
+
+z = print_capitalized(45)  # FAILS: `int` is not a subtype of `str`
+
+
+from typing import SupportsAbs
+
+
+U = TypeVar("U", bound=str | bytes)  # Can be any subtype of the union str|bytes
+V = TypeVar("V", bound=SupportsAbs)  # Can be anything with an __abs__ method
+
+
+a__ = concatenate("one", "two")
+reveal_type(a__)  # revealed type is str
+
+b__ = concatenate(StringSubclass("one"), StringSubclass("two"))
+reveal_type(b__)  # revealed type is str, despite StringSubclass being passed in
+
+c__ = concatenate("one", b"two")
+# FAILS: type variable `A` can be either `str` or `bytes`, but not both
+
+
+try:
+    isinstance("x", U)
+except TypeError:
+    pass
+
+# TODO
+T = TypeVar("T")
+Ts = TypeVarTuple("Ts")
+
+
+def move_first_element_to_last(tup: tuple[T, *Ts]) -> tuple[*Ts, T]:
+    return (*tup[1:], tup[0])
+
+
+# %% [markdown]
+# A normal type variable enables parameterization with a single type. A type variable tuple, in contrast, allows parameterization with an _arbitrary_ number of types by acting like an _arbitrary_ number of type variables wrapped in a tuple. For example:
+#
+
+# %%
+# T is bound to int, Ts is bound to ()
+# Return value is (1,), which has type tuple[int]
+move_first_element_to_last(tup=(1,))
+
+# T is bound to int, Ts is bound to (str,)
+# Return value is ('spam', 1), which has type tuple[str, int]
+move_first_element_to_last(tup=(1, "spam"))
+
+# T is bound to int, Ts is bound to (str, float)
+# Return value is ('spam', 3.0, 1), which has type tuple[str, float, int]
+move_first_element_to_last(tup=(1, "spam", 3.0))
+
+# This fails to type check (and fails at runtime)
+# because tuple[()] is not compatible with tuple[T, *Ts]
+# (at least one element is required)
+move_first_element_to_last(tup=())
+
+# %% [markdown]
+# Note the use of the unpacking operator `*` in `tuple[T, *Ts]`. Conceptually, you can think of `Ts` as a tuple of type variables `(T1, T2, ...)`. `tuple[T, *Ts]` would then become `tuple[T, *(T1, T2, ...)]`, which is equivalent to `tuple[T, T1, T2, ...]`. (Note that in older versions of Python, you might see this written using [Unpack](#typing.Unpack) instead, as `Unpack[Ts]`.) Type variable tuples must _always_ be unpacked. This helps distinguish type variable tuples from normal type variables:
+#
+
+# %%
+x: Ts  # Not valid
+x: tuple[Ts]  # Not valid
+x: tuple[*Ts]  # The correct way to do it
+
+# %% [markdown]
+# Type variable tuples can be used in the same contexts as normal type variables. For example, in class definitions, arguments, and return types:
+#
 
 # # %%
 # Shape = TypeVarTuple("Shape")

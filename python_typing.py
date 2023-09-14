@@ -366,7 +366,6 @@ class Pair(Generic[T, T]):  # FAILS: same type variable
 
 from collections.abc import Sized
 
-
 # You can use multiple inheritance with `Generic`
 class LinkedList(Sized, Generic[T]):
     # A class that has a `Sized` base class and all its elements are of the same type `T`
@@ -769,11 +768,6 @@ from typing import ClassVar
 class Starship:
     stats: ClassVar[dict[str, int]] = {}  # class variable
     damage: int = 10  # instance variable
-
-
-# %% [markdown]
-# [ClassVar](#typing.ClassVar) accepts only types and cannot be further subscribed. [ClassVar](#typing.ClassVar) is not a class itself, and should not be used with [isinstance()](functions.html#isinstance) or [issubclass()](functions.html#issubclass). [ClassVar](#typing.ClassVar) does not change Python runtime behavior, but it can be used by third-party type checkers. For example, a type checker might flag the following code as an error:
-#
 
 enterprise_d = Starship()
 enterprise_d.stats = {}  # Error, setting class variable on instance
